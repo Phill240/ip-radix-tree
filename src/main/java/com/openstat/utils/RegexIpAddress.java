@@ -1,7 +1,9 @@
 package com.openstat.utils;
 
-import sun.net.util.IPAddressUtil;
-
+import java.net.InetAddress;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.UnknownHostException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -61,14 +63,14 @@ public class RegexIpAddress {
      * @return  ipv4=4 ,ipv6=6 , other=0
      */
     public static int isIpv4OrIpv6(String ip){
-        int result;
-        if(IPAddressUtil.isIPv4LiteralAddress(ip)){
-            result=4;
-        }else if(IPAddressUtil.isIPv6LiteralAddress(ip)){
-            result=6;
-        }else{
-            result=0;
-        }
-        return result;
+        try {
+            InetAddress address = InetAddress.getByName(ip);
+            if (address instanceof Inet4Address) {
+                return 4;
+            } else if (address instanceof Inet6Address) {
+                return 6;
+            }
+        } catch(UnknownHostException e) {}
+        return 0;
     }
 }

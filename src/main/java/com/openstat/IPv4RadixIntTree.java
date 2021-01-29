@@ -18,9 +18,6 @@ package com.openstat;
 
 import com.openstat.utils.IpConvert;
 import com.openstat.utils.RegexIpAddress;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -74,16 +71,6 @@ public class IPv4RadixIntTree {
     private int allocatedSize;
     private int size;
 
-    private static FileSystem fs = null;
-    static {
-        try {
-            System.setProperty("hadoop.home.dir",HADOOP_DIR);
-            fs = FileSystem.get(new Configuration());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
     /**
      * Initializes IPv4 radix tree with default capacity of 1024 nodes. It should be sufficient for small databases.
      */
@@ -115,22 +102,6 @@ public class IPv4RadixIntTree {
             i++;
         }
         return i;
-    }
-
-    /**
-     * The total number of count hadoop distribute file system    text file  lines.
-     *
-     * @param filename file name
-     * @return The number of line .
-     * @throws IOException
-     */
-    private static int countLinesInHdfds(String filename) throws IOException {
-        BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(filename)), "utf-8"));
-        int j = 0;
-        while (br.readLine() != null) {
-            j++;
-        }
-        return j;
     }
 
     /**
@@ -308,19 +279,6 @@ public class IPv4RadixIntTree {
     /**
      * Helper function that reads IPv4 radix tree from a local file in tab-separated format:
      * (IPv4 net => value)
-     * Default format :not nginx
-     *
-     * @param filename name of a local file to read
-     * @return a fully constructed IPv4 radix tree from that file
-     * @throws IOException
-     */
-    public static IPv4RadixIntTree loadFromHdfsFile(String filename) throws IOException {
-        return loadFromHdfs(filename, false);
-    }
-
-    /**
-     * Helper function that reads IPv4 radix tree from a local file in tab-separated format:
-     * (IPv4 net => value)
      *
      * @param filename    name of a local file to read
      * @param nginxFormat if true, then file would be parsed as nginx web server configuration file:
@@ -336,7 +294,7 @@ public class IPv4RadixIntTree {
         long value;
         /*
          line (cidr,nextId,ispId,regionId,regionlevel,regionType,networkType)
-         112.60.0.0/18	951728549285331151	2	34	3	2	0
+         112.60.0.0/18  951728549285331151  2   34  3   2   0
          */
 
         while ((l = br.readLine()) != null) {
@@ -357,48 +315,6 @@ public class IPv4RadixIntTree {
 
             ////////////////////////////////////////////////////////
             // Judge the text of the ip is legal!
-            String ip=c[0].split("/")[0];
-            if(RegexIpAddress.isIpv4OrIpv6(ip)==4){
-                tr.put(c[0].trim(), value);
-            }
-
-        }
-
-        return tr;
-    }
-
-    /**
-     * Read region file from hadoop distribute file system .
-     *
-     * @param filePath    filePath
-     * @param nginxFormat format
-     * @return IPv4RadixIntTree
-     * @throws IOException
-     */
-    public static IPv4RadixIntTree loadFromHdfs(String filePath, boolean nginxFormat) throws IOException {
-        IPv4RadixIntTree tr = new IPv4RadixIntTree(countLinesInHdfds(filePath));
-        BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(filePath)), "UTF-8"));
-        String l;
-        long value;
-        /*
-         line (cidr,nextId,ispId,regionId,regionlevel,regionType,networkType)
-         112.60.0.0/18	951728549285331151	2	34	3	2	0
-         */
-
-        while ((l = br.readLine()) != null) {
-            String[] c = l.split(LINE_SPLIT, -1);
-
-            if (nginxFormat) {
-                // strip ";" at EOL
-                c[1] = c[1].substring(0, c[1].length() - 1);
-
-                // NB: this is to work around malicious "80000000" AS number
-                value = Long.parseLong(c[1], NGINX_LENGTH);
-            } else {
-                value = Long.parseLong(c[1]);
-            }
-            ////////////////////////////////////////////
-            // Judge the text of the ip is legal or not!
             String ip=c[0].split("/")[0];
             if(RegexIpAddress.isIpv4OrIpv6(ip)==4){
                 tr.put(c[0].trim(), value);

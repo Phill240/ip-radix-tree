@@ -2,11 +2,6 @@ package com.openstat;
 
 import com.openstat.utils.IpConvert;
 import com.openstat.utils.RegexIpAddress;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
@@ -29,7 +24,6 @@ import java.net.UnknownHostException;
  * Update by highfei2011 in 2018-02-08 .
  */
 public class IPv6RadixBigIntegerTree {
-    private static Logger logger= LoggerFactory.getLogger(IPv6RadixBigIntegerTree.class);
     /**
      * Special value that designates that there are no value stored in the key so far.
      * One can't use store value in a tree.
@@ -58,24 +52,11 @@ public class IPv6RadixBigIntegerTree {
     // cidr max
     private static final int CIDR_MAX_LENGTH = 128;
 
-    // your hadoop dir
-    private static final  String HADOOP_DIR="/opt/soft/hadoop-2.6.0";
-
     private int[] rights;
     private int[] lefts;
     private BigInteger[] values;
     private int allocatedSize;
     private int size;
-
-    private static FileSystem fs = null;
-    static {
-        try {
-            System.setProperty("hadoop.home.dir",HADOOP_DIR);
-            fs = FileSystem.get(new Configuration());
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 
     /**
      * Initializes IPv4 radix tree with default capacity of 1024 nodes. It should be sufficient for small databases.
@@ -107,22 +88,6 @@ public class IPv6RadixBigIntegerTree {
             i++;
         }
         return i;
-    }
-
-    /**
-     * The total number of count hadoop distribute file system    text file  lines.
-     *
-     * @param filename file name
-     * @return The number of line .
-     * @throws IOException
-     */
-    private static int countLinesInHdfds(String filename) throws IOException {
-        BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(filename)), "utf-8"));
-        int j = 0;
-        while (br.readLine() != null) {
-            j++;
-        }
-        return j;
     }
 
     /**
@@ -219,7 +184,6 @@ public class IPv6RadixBigIntegerTree {
      * address
      */
     public BigInteger selectValue(BigInteger key) {
-        logger.debug("Input the ip of select is {} .",key);
         BigInteger bit = IPV6_START_VALUE;
         BigInteger value = NO_VALUE;
         int node = ROOT_PTR;
@@ -227,13 +191,10 @@ public class IPv6RadixBigIntegerTree {
         while (node != NULL_PTR && values[node]!=null) {
             if (values[node].compareTo(NO_VALUE)!=0 ) {
                 value = values[node];
-                logger.debug("The value of the query is:{} .",value);
             }
 
-            logger.debug("key.and(bit)  is {}. ",key.and(bit));
             node = (key.and(bit)).compareTo(ZERO_VALUE)!=0  ? rights[node] : lefts[node];
             bit=bit.shiftRight(1);
-            logger.debug("bit is {}",bit);
         }
 
         return value;
@@ -250,6 +211,9 @@ public class IPv6RadixBigIntegerTree {
     public void put(String ipNet, BigInteger value) throws Exception {
         int pos = ipNet.indexOf('/');
         String ipStr = ipNet.substring(0, pos);
+        if (ipStr.endsWith("::")) {
+            ipStr += "0";
+        }
 
         BigInteger ip = IpConvert.stringToBigInt(ipStr);
 
@@ -259,15 +223,11 @@ public class IPv6RadixBigIntegerTree {
         try {
             cidr = Integer.parseInt(netMaskStr.trim());
         } catch (NumberFormatException e) {
-            logger.error("Parse the net mask occur a error: {}" , netMaskStr);
         }
 
         BigInteger temp=(new BigInteger("1").shiftLeft(CIDR_MAX_LENGTH - cidr)).subtract(new BigInteger("1"));
 
         BigInteger netMask = temp.xor(IPV6_END_VALUE);
-        logger.debug("Put       ip           is "+ipNet+" and the bigInteger of ip  is  {}",ip);
-        logger.debug("This      netMaskStr   is {} .",netMaskStr);
-        logger.debug("This      new  netMask is {} .",netMask);
         put(ip, netMask, value);
     }
 
@@ -310,19 +270,6 @@ public class IPv6RadixBigIntegerTree {
     /**
      * Helper function that reads IPv6 radix tree from a local file in tab-separated format:
      * (IPv6 net => value)
-     * Default format :not nginx
-     *
-     * @param filename name of a local file to read
-     * @return A fully constructed IPv4 radix tree from that file
-     * @throws IOException
-     */
-    public static IPv6RadixBigIntegerTree loadFromHdfsFile(String filename) throws Exception {
-        return loadFromHdfs(filename, false);
-    }
-
-    /**
-     * Helper function that reads IPv6 radix tree from a local file in tab-separated format:
-     * (IPv6 net => value)
      *
      * @param filename    name of a local file to read
      * @param nginxFormat if true, then file would be parsed as nginx web server configuration file:
@@ -338,7 +285,7 @@ public class IPv6RadixBigIntegerTree {
         BigInteger value;
         /*
          line (cidr,nextId,ispId,regionId,regionlevel,regionType,networkType)
-         4501:DA8:0203:0:0:0:0:0/16	951728549285331151	2	34	3	2	0
+         4501:DA8:0203:0:0:0:0:0/16 951728549285331151  2   34  3   2   0
          */
 
         while ((l = br.readLine()) != null) {
@@ -359,8 +306,7 @@ public class IPv6RadixBigIntegerTree {
             ////////////////////////////////////////////////////////
             // Judge the text of the ip is legal!
             String ip=c[0].split("/")[0];
-            if(RegexIpAddress.isIpv4OrIpv6(ip)==6){
-                logger.debug("File      ip           is {}",c[0]);
+            if(RegexIpAddress.isIpv4OrIpv6(ip)==6) {
                 tr.put(c[0].trim(), value);
             }
 
@@ -369,44 +315,4 @@ public class IPv6RadixBigIntegerTree {
         return tr;
     }
 
-    /**
-     * Read region file from hadoop distribute file system .
-     *
-     * @param filePath    filePath
-     * @param nginxFormat format
-     * @return IPv6RadixBigIntegerTree
-     * @throws IOException
-     */
-    public static IPv6RadixBigIntegerTree loadFromHdfs(String filePath, boolean nginxFormat) throws Exception {
-        IPv6RadixBigIntegerTree tr = new IPv6RadixBigIntegerTree(countLinesInHdfds(filePath));
-        BufferedReader br = new BufferedReader(new InputStreamReader(fs.open(new Path(filePath)), "UTF-8"));
-        String l;
-        BigInteger value;
-        /*
-         line (cidr,nextId,ispId,regionId,regionlevel,regionType,networkType)
-         4501:DA8:0203:0:0:0:0:0/16	951728549285331151	2	34	3	2	0
-         */
-        while ((l = br.readLine()) != null) {
-            String[] c = l.split(LINE_SPLIT, -1);
-
-            if (nginxFormat) {
-                // strip ";" at EOL
-                c[1] = c[1].substring(0, c[1].length() - 1);
-
-                // NB: this is to work around malicious "80000000" AS number
-                value = new BigInteger(c[1], NGINX_LENGTH);
-            } else {
-                value = new BigInteger(c[1]);
-            }
-
-            ////////////////////////////////////////////
-            // Judge the text of the ip is legal or not!
-            String ip=c[0].split("/")[0];
-            if(RegexIpAddress.isIpv4OrIpv6(ip)==6){
-                tr.put(c[0].trim(), value);
-            }
-
-        }
-        return tr;
-    }
 }
